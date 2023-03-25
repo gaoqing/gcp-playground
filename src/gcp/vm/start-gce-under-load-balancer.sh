@@ -99,17 +99,30 @@ firewallAllowX006=firewall-allow-x006
 firewallTagX006=firewall-allowx006-ports
 
 
-# delete relevant things before re-create
-# append 2>/dev/null if want to ignore remove error, like not found error
-gcloud compute forwarding-rules delete ${frontendForwardingRuleName} --global --quiet
-gcloud compute target-http-proxies delete ${targetHttpProxiesName} --quiet
-gcloud compute url-maps delete ${urlMapsName} --quiet
-gcloud compute backend-services remove-backend ${backendServiceName} --instance-group=${instanceGroupName} --instance-group-region=${REGION} --global --quiet
-gcloud compute backend-services delete ${backendServiceName}  --global --quiet
-gcloud compute instance-groups managed delete ${instanceGroupName} --region=${REGION} --quiet
-gcloud compute instance-templates delete ${instanceTemplateName} --quiet
-gcloud compute health-checks delete ${healthCheckerName}  --global --quiet
-gcloud compute firewall-rules delete ${firewallAllowX006} --quiet
+# delete relevant things if already exists
+gcloud compute forwarding-rules describe ${frontendForwardingRuleName} --global >/dev/null 2>&1
+[ $? -eq 0 ] && gcloud compute forwarding-rules delete ${frontendForwardingRuleName} --global --quiet;
+
+gcloud compute target-http-proxies describe ${targetHttpProxiesName} >/dev/null 2>&1
+[ $? -eq 0 ] && gcloud compute target-http-proxies delete ${targetHttpProxiesName} --quiet
+
+gcloud compute url-maps describe ${urlMapsName} >/dev/null 2>&1
+[ $? -eq 0 ] && gcloud compute url-maps delete ${urlMapsName} --quiet
+
+gcloud compute backend-services describe ${backendServiceName} --global >/dev/null 2>&1
+[ $? -eq 0 ] && gcloud compute backend-services delete ${backendServiceName} --global --quiet
+
+gcloud compute instance-groups managed describe ${instanceGroupName} --region=${REGION} >/dev/null 2>&1
+[ $? -eq 0 ] && gcloud compute instance-groups managed delete ${instanceGroupName} --region=${REGION} --quiet
+
+gcloud compute instance-templates describe ${instanceTemplateName} >/dev/null 2>&1
+[ $? -eq 0 ] && gcloud compute instance-templates delete ${instanceTemplateName} --quiet
+
+gcloud compute health-checks describe ${healthCheckerName} --global >/dev/null 2>&1
+[ $? -eq 0 ] && gcloud compute health-checks delete ${healthCheckerName} --global --quiet
+
+gcloud compute firewall-rules describe ${firewallAllowX006} >/dev/null 2>&1
+[ $? -eq 0 ] && gcloud compute firewall-rules delete ${firewallAllowX006} --quiet
 
 
 ###create instance template

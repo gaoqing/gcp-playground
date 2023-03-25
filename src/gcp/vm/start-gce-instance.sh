@@ -73,8 +73,8 @@ rm /etc/nginx/sites-enabled/default
 service nginx restart
 EOF
 
-#create static ip address
 staticIpName=gce-static-ip-name;
+#create static ip address
 #gcloud compute addresses delete ${staticIpName} --region=${REGION} --quiet 2>/dev/null
 ipAddress=$(gcloud compute addresses describe ${staticIpName} --global --format='get(address)' 2>/dev/null);
 if [ -z "${ipAddress}" ]; then
@@ -84,8 +84,9 @@ fi
 echo "Use IP_ADDRESS: ${ipAddress}";
 
 
-# delete before using the same instance name
-gcloud compute instances delete ${VM_NAME} --zone=${COMPUTE_ZONE} --delete-disks=all --quiet
+# delete when exit before using the same instance name
+gcloud compute instances describe ${VM_NAME} --zone=${COMPUTE_ZONE} >/dev/null 2>&1
+[ $? -eq 0 ] && gcloud compute instances delete ${VM_NAME} --zone=${COMPUTE_ZONE} --delete-disks=all --quiet
 
 # create a GCE instance with the startup script and static ip address
 gcloud compute instances create ${VM_NAME} \
@@ -95,9 +96,10 @@ gcloud compute instances create ${VM_NAME} \
   --address=${staticIpName} \
   --tags http-server
 
+# delete when exit before create same name;
 FIREWALL_RULE=default-allow-http-${NODE_PORT}-${proxy80};
-# delete before create same name;
-gcloud compute firewall-rules delete ${FIREWALL_RULE} --quiet
+gcloud compute firewall-rules describe ${FIREWALL_RULE} >/dev/null 2>&1
+[ $? -eq 0] && gcloud compute firewall-rules delete ${FIREWALL_RULE} --quiet
 
 # create a firewall rule to allow incoming traffic on port
 gcloud compute firewall-rules create ${FIREWALL_RULE} \
