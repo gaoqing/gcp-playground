@@ -76,7 +76,7 @@ EOF
 ## End of startup-script.sh
 
 
-staticIpName=todo-app-static-ip;
+staticIpName=todo-app-static-ip
 ##create static ip address
 #gcloud compute addresses delete ${staticIpName} --global --quiet
 ipAddress=$(gcloud compute addresses describe ${staticIpName} --global --format='get(address)' 2>/dev/null);
@@ -84,7 +84,7 @@ if [ -z "${ipAddress}" ]; then
    gcloud compute addresses create ${staticIpName} --global
    ipAddress=$(gcloud compute addresses describe ${staticIpName} --global --format='get(address)');
 fi
-echo "Use IP_ADDRESS: ${ipAddress}";
+echo "Use IP_ADDRESS: ${ipAddress}"
 
 
 ### names variable
@@ -197,4 +197,4 @@ gcloud compute firewall-rules create ${firewallAllowX006} \
   --target-tags=${firewallTagX006}
 
 
-echo "(wait for 30 seconds) Then web server available at: http://${ipAddress}, or http://${ipAddress}/index.html. make sure http! "
+echo "(wait for 1 min) Then web server available at: http://${ipAddress}, or http://${ipAddress}/index.html. make sure http! "

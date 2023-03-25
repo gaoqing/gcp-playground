@@ -73,15 +73,15 @@ rm /etc/nginx/sites-enabled/default
 service nginx restart
 EOF
 
-staticIpName=gce-static-ip-name;
+staticIpName=gce-static-ip-name
 #create static ip address
 #gcloud compute addresses delete ${staticIpName} --region=${REGION} --quiet 2>/dev/null
-ipAddress=$(gcloud compute addresses describe ${staticIpName} --global --format='get(address)' 2>/dev/null);
+ipAddress=$(gcloud compute addresses describe ${staticIpName} --region=${REGION} --format='get(address)' 2>/dev/null);
 if [ -z "${ipAddress}" ]; then
-   gcloud compute addresses create ${staticIpName} --global
-   ipAddress=$(gcloud compute addresses describe ${staticIpName} --global --format='get(address)');
+   gcloud compute addresses create ${staticIpName} --region=${REGION}
+   ipAddress=$(gcloud compute addresses describe ${staticIpName} --region=${REGION} --format='get(address)');
 fi
-echo "Use IP_ADDRESS: ${ipAddress}";
+echo "Use IP_ADDRESS: ${ipAddress}"
 
 
 # delete when exit before using the same instance name
@@ -90,26 +90,26 @@ gcloud compute instances describe ${VM_NAME} --zone=${COMPUTE_ZONE} >/dev/null 2
 
 # create a GCE instance with the startup script and static ip address
 gcloud compute instances create ${VM_NAME} \
-  --image-family ubuntu-1804-lts \
-  --image-project ubuntu-os-cloud \
+  --image-family=ubuntu-1804-lts \
+  --image-project=ubuntu-os-cloud \
   --metadata-from-file startup-script=${startUpScriptName} \
+  --tags=http-server \
   --address=${staticIpName} \
-  --tags http-server
 
 # delete when exit before create same name;
 FIREWALL_RULE=default-allow-http-${NODE_PORT}-${proxy80};
 gcloud compute firewall-rules describe ${FIREWALL_RULE} >/dev/null 2>&1
-[ $? -eq 0] && gcloud compute firewall-rules delete ${FIREWALL_RULE} --quiet
+[ $? -eq 0 ] && gcloud compute firewall-rules delete ${FIREWALL_RULE} --quiet
 
 # create a firewall rule to allow incoming traffic on port
 gcloud compute firewall-rules create ${FIREWALL_RULE} \
-  --allow tcp:${NODE_PORT},tcp:${proxy80} \
-  --source-ranges 0.0.0.0/0 \
-  --target-tags http-server \
-  --description "Allow port ${NODE_PORT}, ${proxy80} access to http-server"
+  --allow=tcp:${NODE_PORT},tcp:${proxy80} \
+  --source-ranges=0.0.0.0/0 \
+  --target-tags=http-server \
+  --description="Allow port ${NODE_PORT}, ${proxy80} access to http-server"
 
 # get the external IP address
 EXTERNAL_IP=$(gcloud compute instances describe ${VM_NAME} --format='get(networkInterfaces[0].accessConfigs[0].natIP)')
 
 # print the external IP address
-echo "(wait for 30 seconds) Then web server available at: http://${EXTERNAL_IP}:${NODE_PORT}, or by nginx proxy via: http://${EXTERNAL_IP}:${proxy80}/index.html. make sure http!!"
+echo "(wait for 1 min) Then web server available at: http://${EXTERNAL_IP}:${NODE_PORT}, or by nginx proxy via: http://${EXTERNAL_IP}:${proxy80}/index.html. make sure http!!"
