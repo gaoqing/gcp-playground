@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Todo App</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f2f2f2;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+        .container {
+            background-color: #ffffff;
+            padding: 2rem;
+            border-radius: 1rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            width: 400px;
+        }
+        h1 {
+            color: #0077ff;
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 0.5rem;
+            font-size: 1rem;
+            margin-bottom: 1rem;
+            border: 1px solid #0077ff;
+            border-radius: 0.5rem;
+        }
+        button {
+            background-color: #0077ff;
+            color: white;
+            font-size: 1rem;
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 0.5rem;
+            cursor: pointer;
+        }
+        ul {
+            padding-left: 0;
+        }
+        li {
+            list-style-type: none;
+            background-color: #0077ff;
+            color: white;
+            margin-bottom: 1rem;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            display: flex;
+            justify-content: space-between;
+        }
+        .completed {
+            text-decoration: line-through;
+            opacity: 0.5;
+        }
+        .timestamp {
+            font-size: 0.75rem;
+            margin-left: 1rem;
+        }
+        .btn-group {
+            display: flex;
+            align-items: center;
+        }
+        .complete-btn, .delete-btn {
+            background: none;
+            color: white;
+            border: none;
+            cursor: pointer;
+            margin-left: 0.5rem;
+        }
+    </style>
+
+</head>
+<body>
+<div class="container">
+    <h1>Todo App</h1>
+    <input type="text" id="todoInput" placeholder="Add a task...">
+    <button id="addBtn">Add Task</button>
+    <ul id="todoList"></ul>
+</div>
+<script>
+    const todoInput = document.getElementById('todoInput');
+    const addBtn = document.getElementById('addBtn');
+    const todoList = document.getElementById('todoList');
+
+    function addTodo() {
+        const task = todoInput.value.trim();
+        if (task) {
+            const listItem = document.createElement('li');
+            const taskSpan = document.createElement('span');
+            taskSpan.textContent = task;
+            listItem.appendChild(taskSpan);
+
+            const timestamp = document.createElement('span');
+            timestamp.classList.add('timestamp');
+            timestamp.textContent = new Date().toLocaleString();
+            listItem.appendChild(timestamp);
+
+            const btnGroup = document.createElement('div');
+            btnGroup.classList.add('btn-group');
+
+            const completeBtn = document.createElement('button');
+            completeBtn.classList.add('complete-btn');
+            completeBtn.textContent = '✓';
+            completeBtn.addEventListener('click', () => {
+                taskSpan.classList.toggle('completed');
+            });
+            btnGroup.appendChild(completeBtn);
+
+            const deleteBtn = document.createElement('button');
+            deleteBtn.classList.add('delete-btn');
+            deleteBtn.textContent = '✕';
+            deleteBtn.addEventListener('click', () => {
+                listItem.remove();
+            });
+            btnGroup.appendChild(deleteBtn);
+
+            listItem.appendChild(btnGroup);
+            todoList.appendChild(listItem);
+            todoInput.value = '';
+        }
+    }
+
+    addBtn.addEventListener('click', addTodo);
+
+    todoInput.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+            addTodo();
+        }
+    });
+</script>
+
+</body>
+</html>
