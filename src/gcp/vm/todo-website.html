@@ -77,6 +77,17 @@
         }
     </style>
 
+    <template id="todo-item-template">
+        <li>
+            <span class="task-span">{{todo-info}}</span>
+            <span class="timestamp">{{creation_time}}</span>
+            <div class="btn-group">
+                <button class="complete-btn">✓</button>
+                <button class="delete-btn">✕</button>
+            </div>
+        </li>
+    </template>
+
 </head>
 <body>
 <div class="container">
@@ -89,52 +100,79 @@
     const todoInput = document.getElementById('todoInput');
     const addBtn = document.getElementById('addBtn');
     const todoList = document.getElementById('todoList');
+    const itemTemplate = document.getElementById('todo-item-template');
+    const STATUS = { NEW: 'NEW', DONE: 'DONE'};
 
-    function addTodo() {
-        const task = todoInput.value.trim();
-        if (task) {
-            const listItem = document.createElement('li');
-            const taskSpan = document.createElement('span');
-            taskSpan.textContent = task;
-            listItem.appendChild(taskSpan);
+    const storageService = (()=> {
+        const storageKey = 'MY_GCP_TODO_APP_KEY';
+        const storage = localStorage.getItem(storageKey);
+        const storedList = JSON.parse(storage || '[]');
+        let idSeed = Date.now();
+        const saveLatest = () =>  localStorage.setItem(storageKey, JSON.stringify(storedList));
+        return {
+            getTodoList: () => storedList,
+            addTodoItem: todoInfo => {
+                if(todoInfo){
+                    const item = {id: idSeed++, value: todoInfo, timestamp: new Date().toLocaleString(), status: STATUS.NEW};
+                    storedList.push(item);
+                    saveLatest();
+                    return item;
+                }
+            },
+            deleteTodoItem: ({id}) => {
+                const index = storedList.findIndex(v => v.id === id);
+                if(index > -1){
+                    storedList.splice(index,1);
+                    saveLatest();
+                }
+            },
+            completeTodoItem: ({id}) => {
+                const found = storedList.find(v => v.id === id);
+                if(found){
+                    found.status = STATUS.DONE;
+                    saveLatest();
+                }
+            },
+        }
+    })();
 
-            const timestamp = document.createElement('span');
-            timestamp.classList.add('timestamp');
-            timestamp.textContent = new Date().toLocaleString();
-            listItem.appendChild(timestamp);
+    storageService.getTodoList().forEach(item => addNewTodo(item));
+    addBtn.addEventListener('click', () => addNewTodo());
+    todoInput.addEventListener('keydown', (event) => event.key === 'Enter' && addNewTodo());
 
-            const btnGroup = document.createElement('div');
-            btnGroup.classList.add('btn-group');
+    function addNewTodo(item) {
+        item = item || storageService.addTodoItem(todoInput.value.trim());
+        if(!item) return;
 
-            const completeBtn = document.createElement('button');
-            completeBtn.classList.add('complete-btn');
-            completeBtn.textContent = '✓';
-            completeBtn.addEventListener('click', () => {
+        const task = item.value;
+        const clonedItem = itemTemplate.content.cloneNode(true);
+        const li =  clonedItem.firstElementChild;
+        const taskSpan = clonedItem.querySelector('.task-span');
+        taskSpan.textContent = task;
+        if(item.status === STATUS.DONE){
+            taskSpan.classList.toggle('completed');
+        }
+        clonedItem.querySelector('.timestamp').textContent = item.timestamp;
+        const completeBtn = clonedItem.querySelector('.complete-btn');
+        const deleteBtn = clonedItem.querySelector('.delete-btn');
+        completeBtn.addEventListener('click', () => {
+            if(item.status === STATUS.NEW){
                 taskSpan.classList.toggle('completed');
-            });
-            btnGroup.appendChild(completeBtn);
+                storageService.completeTodoItem(item)
+            }
+        });
+        deleteBtn.addEventListener('click', () => {
+            li.remove();
+            storageService.deleteTodoItem(item)
+        });
 
-            const deleteBtn = document.createElement('button');
-            deleteBtn.classList.add('delete-btn');
-            deleteBtn.textContent = '✕';
-            deleteBtn.addEventListener('click', () => {
-                listItem.remove();
-            });
-            btnGroup.appendChild(deleteBtn);
-
-            listItem.appendChild(btnGroup);
-            todoList.appendChild(listItem);
-            todoInput.value = '';
+        if(todoList.firstElementChild){
+            todoList.insertBefore(clonedItem, todoList.firstElementChild);
+        } else {
+            todoList.appendChild(clonedItem);
         }
+        todoInput.value = '';
     }
-
-    addBtn.addEventListener('click', addTodo);
-
-    todoInput.addEventListener('keydown', (event) => {
-        if (event.key === 'Enter') {
-            addTodo();
-        }
-    });
 </script>
 
 </body>
