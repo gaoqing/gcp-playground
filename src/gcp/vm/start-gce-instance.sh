@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #just use the one set by 'gcloud config set project [your-project-id]'
-#PROJECT_ID="splendid-alpha-381707"
+#PROJECT_ID="arcane-argon-386608"
 #gcloud config set project "${PROJECT_ID}"
 REGION="asia-east2"
 COMPUTE_ZONE="asia-east2-a"
@@ -10,11 +10,13 @@ gcloud config set compute/zone "${COMPUTE_ZONE}"
 
 VM_NAME=gce-test-box
 NODE_PORT=6006
-proxy80=80
-staticHtml=todo-website.html
-nodeServerFile=node-server.js
+# just for testing using a nginx 80 port to proxy to node 6006
+nginxProxy80=80
+staticHtml=sample-todo-website.html
+nodeServerFile=sample-node-server.js
 
-startUpScriptName=gce-test-startup-script.sh
+[ ! -d ./auto-generated ] && mkdir ./auto-generated
+startUpScriptName=./auto-generated/gce-test-startup-script.sh
 
 # Startup script for the GCE instance
 cat << 'EOF' > ${startUpScriptName}
@@ -76,12 +78,12 @@ EOF
 staticIpName=gce-static-ip-name
 #create static ip address
 #gcloud compute addresses delete ${staticIpName} --region=${REGION} --quiet 2>/dev/null
-ipAddress=$(gcloud compute addresses describe ${staticIpName} --region=${REGION} --format='get(address)' 2>/dev/null);
-if [ -z "${ipAddress}" ]; then
+IP_ADDRESS=$(gcloud compute addresses describe ${staticIpName} --region=${REGION} --format='get(address)' 2>/dev/null);
+if [ -z "${IP_ADDRESS}" ]; then
    gcloud compute addresses create ${staticIpName} --region=${REGION}
-   ipAddress=$(gcloud compute addresses describe ${staticIpName} --region=${REGION} --format='get(address)');
+   IP_ADDRESS=$(gcloud compute addresses describe ${staticIpName} --region=${REGION} --format='get(address)');
 fi
-echo "Use IP_ADDRESS: ${ipAddress}"
+echo "Use IP_ADDRESS: ${IP_ADDRESS}"
 
 
 # delete when exit before using the same instance name
@@ -97,19 +99,19 @@ gcloud compute instances create ${VM_NAME} \
   --address=${staticIpName} \
 
 # delete when exit before create same name;
-FIREWALL_RULE=default-allow-http-${NODE_PORT}-${proxy80};
+FIREWALL_RULE=default-allow-http-${NODE_PORT}-${nginxProxy80};
 gcloud compute firewall-rules describe ${FIREWALL_RULE} >/dev/null 2>&1
 [ $? -eq 0 ] && gcloud compute firewall-rules delete ${FIREWALL_RULE} --quiet
 
 # create a firewall rule to allow incoming traffic on port
 gcloud compute firewall-rules create ${FIREWALL_RULE} \
-  --allow=tcp:${NODE_PORT},tcp:${proxy80} \
+  --allow=tcp:${NODE_PORT},tcp:${nginxProxy80} \
   --source-ranges=0.0.0.0/0 \
   --target-tags=http-server \
-  --description="Allow port ${NODE_PORT}, ${proxy80} access to http-server"
+  --description="Allow port ${NODE_PORT}, ${nginxProxy80} access to http-server"
 
 # get the external IP address
 EXTERNAL_IP=$(gcloud compute instances describe ${VM_NAME} --format='get(networkInterfaces[0].accessConfigs[0].natIP)')
 
 # print the external IP address
-echo "(wait for 1 min) Then web server available at: http://${EXTERNAL_IP}:${NODE_PORT}, or by nginx proxy via: http://${EXTERNAL_IP}:${proxy80}/index.html. make sure http!!"
+echo "(wait for 1 min) Then web server available at: http://${EXTERNAL_IP}:${NODE_PORT}, or by nginx proxy via: http://${EXTERNAL_IP}:${nginxProxy80}/index.html. make sure http!!"

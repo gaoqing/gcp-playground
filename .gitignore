@@ -31,5 +31,7 @@ build/
 
 ### VS Code ###
 .vscode/
-# auto created
+# auto created startup script used when bootstrap gce
 *startup-script.sh
+localfiles
+auto-generated
