@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #just use the one set by 'gcloud config set project [your-project-id]'
-#PROJECT_ID="splendid-alpha-381707"
+#PROJECT_ID="arcane-argon-386608"
 #gcloud config set project "${PROJECT_ID}"
 REGION="asia-east2"
 COMPUTE_ZONE="asia-east2-a"
@@ -13,11 +13,14 @@ NODE_PORT=6006
 httpPort6006=6006
 httpPort80=80
 
-staticHtmlFile=todo-website.html
-nodeServerFile=node-server.js
+staticHtmlFile=sample-todo-website.html
+nodeServerFile=sample-node-server.js
 
-## Startup script for the GCE instance, which will be run to provision apps inside the VM.
-startUpScriptName=gce-todo-startup-script.sh
+
+######## startup-script for the GCE instance, which provision apps into the VM instance. ########
+[ ! -d ./auto-generated ] && mkdir ./auto-generated
+startUpScriptName=./auto-generated/gce-todoapp-startup-script.sh
+
 echo "" > ${startUpScriptName}
 
 cat << 'EOF' >> ${startUpScriptName}
@@ -76,16 +79,24 @@ EOF
 ## End of startup-script.sh
 
 
-staticIpName=todo-app-static-ip
-##create static ip address
-#gcloud compute addresses delete ${staticIpName} --global --quiet
-ipAddress=$(gcloud compute addresses describe ${staticIpName} --global --format='get(address)' 2>/dev/null);
-if [ -z "${ipAddress}" ]; then
-   gcloud compute addresses create ${staticIpName} --global
-   ipAddress=$(gcloud compute addresses describe ${staticIpName} --global --format='get(address)');
-fi
-echo "Use IP_ADDRESS: ${ipAddress}"
+getOrCreateIpAddress(){
+  #gcloud compute addresses delete ${THE_IP_ADDRESS_NAME} --global --quiet
+  IP_ADDRESSName=$1
+  theIp=$(gcloud compute addresses describe ${IP_ADDRESSName} --global --format='get(address)' 2>/dev/null);
+  if [ -z "${theIp}" ]; then
+     gcloud compute addresses create ${IP_ADDRESSName} --global
+     theIp=$(gcloud compute addresses describe ${IP_ADDRESSName} --global --format='get(address)');
+  fi
+  echo ${theIp};
+}
 
+
+######## Start of GCP infra provisioning ########
+
+##create static ip address
+staticIpName=http-todo-app-static-ip
+IP_ADDRESS=$(getOrCreateIpAddress ${staticIpName})
+echo "For HTTP use IP_ADDRESS: ${IP_ADDRESS}"
 
 ### names variable
 instanceTemplateName=my-todo-app-template
@@ -97,14 +108,23 @@ targetHttpProxiesName=my-todo-target-http-proxies
 frontendForwardingRuleName=my-todo-frontend-fwd-rule
 firewallAllowX006=firewall-allow-x006
 firewallTagX006=firewall-allowx006-ports
+# https
+httpsTargetHttpsProxiesName=https-todo-target-https-proxies
+httpsFrontendForwardingRuleName=https-todo-frontend-fwd-rule
 
 
 # delete relevant things if already exists
 gcloud compute forwarding-rules describe ${frontendForwardingRuleName} --global >/dev/null 2>&1
 [ $? -eq 0 ] && gcloud compute forwarding-rules delete ${frontendForwardingRuleName} --global --quiet;
 
+gcloud compute forwarding-rules describe ${httpsFrontendForwardingRuleName} --global >/dev/null 2>&1
+[ $? -eq 0 ] && gcloud compute forwarding-rules delete ${httpsFrontendForwardingRuleName} --global --quiet;
+
 gcloud compute target-http-proxies describe ${targetHttpProxiesName} >/dev/null 2>&1
 [ $? -eq 0 ] && gcloud compute target-http-proxies delete ${targetHttpProxiesName} --quiet
+
+gcloud compute target-https-proxies describe ${httpsTargetHttpsProxiesName} >/dev/null 2>&1
+[ $? -eq 0 ] && gcloud compute target-https-proxies delete ${httpsTargetHttpsProxiesName} --quiet
 
 gcloud compute url-maps describe ${urlMapsName} >/dev/null 2>&1
 [ $? -eq 0 ] && gcloud compute url-maps delete ${urlMapsName} --quiet
@@ -134,7 +154,8 @@ gcloud compute instance-templates create ${instanceTemplateName}  \
 
 
 ###create instance group
-###add health check for instance group members
+### add health check for instance group members, use either 1 below
+# TCP health check to simply verify that a TCP connection can be established, but not application layer behaviour
 gcloud compute health-checks create tcp ${healthCheckerName}  \
   --global \
   --port=${NODE_PORT}  \
@@ -143,6 +164,7 @@ gcloud compute health-checks create tcp ${healthCheckerName}  \
   --unhealthy-threshold=2 \
   --healthy-threshold=2
 
+# HTTP health-check, to app health endpoint, test specific to application layer behaviour
 #gcloud compute health-checks create http ${healthCheckerName}  \
 #  --request-path=/ \
 #  --port=${NODE_PORT}  \
@@ -168,7 +190,7 @@ gcloud compute backend-services create ${backendServiceName} \
   --protocol=HTTP \
   --load-balancing-scheme=EXTERNAL \
   --health-checks=${healthCheckerName} \
-  --port-name=namedport80 \
+  --port-name=namedport80
 #  --port-name=namedport6006
 
 gcloud compute backend-services add-backend ${backendServiceName} \
@@ -197,4 +219,4 @@ gcloud compute firewall-rules create ${firewallAllowX006} \
   --target-tags=${firewallTagX006}
 
 
-echo "(wait for 1 min) Then web server available at: http://${ipAddress}, or http://${ipAddress}/index.html. make sure http! "
+echo "(wait for 1 min) Then web server available at: http://${IP_ADDRESS}, or http://${IP_ADDRESS}/index.html. make sure http! "
