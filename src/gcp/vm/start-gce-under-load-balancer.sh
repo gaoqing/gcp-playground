@@ -19,11 +19,7 @@ IS_HTTPS_TOGGLE_ON=false
 staticHtmlFile=sample-todo-website.html
 nodeServerFile=sample-node-server.js
 
-
 ######## startup-script for the GCE instance, which provision apps into the VM instance. ########
-[ ! -d ./auto-generated ] && mkdir ./auto-generated
-startUpScriptName=./auto-generated/gce-todoapp-startup-script.sh
-
 echo "" > ${startUpScriptName}
 
 cat << 'EOF' >> ${startUpScriptName}
@@ -80,6 +76,7 @@ rm /etc/nginx/sites-enabled/default
 service nginx restart
 EOF
 ## End of startup-script.sh
+}
 
 
 function getOrCreateIpAddress(){
@@ -236,7 +233,7 @@ function doCreate4Https(){
   ### IF want to do https, need a domain before hand, which will be signed by GCP.
   ### Https forwarding rules: https://cloud.google.com/load-balancing/docs/ssl-certificates/google-managed-certs#gcloud
   ### However for newly created GCP managed-cert, need time for GCP signing, my previous test about 1 hour.
-  echo "HTTPS support creating, it will take a while ......"
+  echo "Start to create https relevant resources, it will take a while ......"
 
   ## use your real domain name below
 #  domain='your.real.domain.com'
