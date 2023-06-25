@@ -1,5 +1,10 @@
 #!/bin/bash
 
+# script mode, supported options: [cleanup | creationHttpOnly | creationHttps]
+MODE=creationHttps
+# As signing cert need some time, choose false to keep previous cert without delete and recreate.
+isCleanupHttpsCertToo=false
+
 #just use the one set by 'gcloud config set project [your-project-id]'
 #PROJECT_ID="arcane-argon-386608"
 #gcloud config set project "${PROJECT_ID}"
@@ -13,8 +18,33 @@ NODE_PORT=6006
 httpPort6006=6006
 httpPort80=80
 
-# toggle of https support, toggle true need more settings, refer to 'doCreate4Https' function at the bottom
-IS_HTTPS_TOGGLE_ON=false
+### names variable
+instanceTemplateName=my-todo-app-template
+instanceGroupName=my-todo-instance-group
+healthCheckerName=my-todo-app-health-check
+backendServiceName=my-todo-backend-service
+urlMapsName=my-todo-url-maps
+targetHttpProxiesName=my-todo-target-http-proxies
+frontendForwardingRuleName=my-todo-frontend-fwd-rule
+firewallAllowX006=firewall-allow-x006
+firewallTagX006=firewall-allowx006-ports
+# HTTPs
+httpsTargetHttpsProxiesName=https-todo-target-https-proxies
+httpsFrontendForwardingRuleName=https-todo-frontend-fwd-rule
+sslCertName=https-todo-app-gcp-cert
+httpsStaticIpName=https-todo-app-static-ip
+
+if [ ! -d ./auto-generated ]; then
+  mkdir ./auto-generated
+fi
+
+startUpScriptName=./auto-generated/gce-todoapp-startup-script.sh
+
+
+function prepareStartupScript() {
+# for below 'cat' content into .sh file, make sure no leading space, otherwise that shell script will not work properly
+
+echo "Start to prepare startup shell script for vm bootstrap";
 
 staticHtmlFile=sample-todo-website.html
 nodeServerFile=sample-node-server.js
@@ -91,141 +121,133 @@ function getOrCreateIpAddress(){
 }
 
 
-######## Start of GCP infra provisioning ########
+function cleanupGCPResources() {
+  # delete relevant things if already exists
+  echo "Start to clean up existing resource using same resource name"
 
-##create static ip address
-staticIpName=http-todo-app-static-ip
-IP_ADDRESS=$(getOrCreateIpAddress ${staticIpName})
-echo "For HTTP use IP_ADDRESS: ${IP_ADDRESS}"
+  gcloud compute forwarding-rules describe ${frontendForwardingRuleName} --global >/dev/null 2>&1
+  [ $? -eq 0 ] && gcloud compute forwarding-rules delete ${frontendForwardingRuleName} --global --quiet;
 
-### names variable
-instanceTemplateName=my-todo-app-template
-instanceGroupName=my-todo-instance-group
-healthCheckerName=my-todo-app-health-check
-backendServiceName=my-todo-backend-service
-urlMapsName=my-todo-url-maps
-targetHttpProxiesName=my-todo-target-http-proxies
-frontendForwardingRuleName=my-todo-frontend-fwd-rule
-firewallAllowX006=firewall-allow-x006
-firewallTagX006=firewall-allowx006-ports
-# https
-httpsTargetHttpsProxiesName=https-todo-target-https-proxies
-httpsFrontendForwardingRuleName=https-todo-frontend-fwd-rule
+  gcloud compute forwarding-rules describe ${httpsFrontendForwardingRuleName} --global >/dev/null 2>&1
+  [ $? -eq 0 ] && gcloud compute forwarding-rules delete ${httpsFrontendForwardingRuleName} --global --quiet;
 
+  gcloud compute target-http-proxies describe ${targetHttpProxiesName} >/dev/null 2>&1
+  [ $? -eq 0 ] && gcloud compute target-http-proxies delete ${targetHttpProxiesName} --quiet
 
-# delete relevant things if already exists
-gcloud compute forwarding-rules describe ${frontendForwardingRuleName} --global >/dev/null 2>&1
-[ $? -eq 0 ] && gcloud compute forwarding-rules delete ${frontendForwardingRuleName} --global --quiet;
+  gcloud compute target-https-proxies describe ${httpsTargetHttpsProxiesName} >/dev/null 2>&1
+  [ $? -eq 0 ] && gcloud compute target-https-proxies delete ${httpsTargetHttpsProxiesName} --quiet
 
-gcloud compute forwarding-rules describe ${httpsFrontendForwardingRuleName} --global >/dev/null 2>&1
-[ $? -eq 0 ] && gcloud compute forwarding-rules delete ${httpsFrontendForwardingRuleName} --global --quiet;
+  gcloud compute url-maps describe ${urlMapsName} >/dev/null 2>&1
+  [ $? -eq 0 ] && gcloud compute url-maps delete ${urlMapsName} --quiet
 
-gcloud compute target-http-proxies describe ${targetHttpProxiesName} >/dev/null 2>&1
-[ $? -eq 0 ] && gcloud compute target-http-proxies delete ${targetHttpProxiesName} --quiet
+  gcloud compute backend-services describe ${backendServiceName} --global >/dev/null 2>&1
+  [ $? -eq 0 ] && gcloud compute backend-services delete ${backendServiceName} --global --quiet
 
-gcloud compute target-https-proxies describe ${httpsTargetHttpsProxiesName} >/dev/null 2>&1
-[ $? -eq 0 ] && gcloud compute target-https-proxies delete ${httpsTargetHttpsProxiesName} --quiet
+  gcloud compute instance-groups managed describe ${instanceGroupName} --region=${REGION} >/dev/null 2>&1
+  [ $? -eq 0 ] && gcloud compute instance-groups managed delete ${instanceGroupName} --region=${REGION} --quiet
 
-gcloud compute url-maps describe ${urlMapsName} >/dev/null 2>&1
-[ $? -eq 0 ] && gcloud compute url-maps delete ${urlMapsName} --quiet
+  gcloud compute instance-templates describe ${instanceTemplateName} >/dev/null 2>&1
+  [ $? -eq 0 ] && gcloud compute instance-templates delete ${instanceTemplateName} --quiet
 
-gcloud compute backend-services describe ${backendServiceName} --global >/dev/null 2>&1
-[ $? -eq 0 ] && gcloud compute backend-services delete ${backendServiceName} --global --quiet
+  gcloud compute health-checks describe ${healthCheckerName} --global >/dev/null 2>&1
+  [ $? -eq 0 ] && gcloud compute health-checks delete ${healthCheckerName} --global --quiet
 
-gcloud compute instance-groups managed describe ${instanceGroupName} --region=${REGION} >/dev/null 2>&1
-[ $? -eq 0 ] && gcloud compute instance-groups managed delete ${instanceGroupName} --region=${REGION} --quiet
+  gcloud compute firewall-rules describe ${firewallAllowX006} >/dev/null 2>&1
+  [ $? -eq 0 ] && gcloud compute firewall-rules delete ${firewallAllowX006} --quiet
 
-gcloud compute instance-templates describe ${instanceTemplateName} >/dev/null 2>&1
-[ $? -eq 0 ] && gcloud compute instance-templates delete ${instanceTemplateName} --quiet
-
-gcloud compute health-checks describe ${healthCheckerName} --global >/dev/null 2>&1
-[ $? -eq 0 ] && gcloud compute health-checks delete ${healthCheckerName} --global --quiet
-
-gcloud compute firewall-rules describe ${firewallAllowX006} >/dev/null 2>&1
-[ $? -eq 0 ] && gcloud compute firewall-rules delete ${firewallAllowX006} --quiet
+  if [ ${isCleanupHttpsCertToo} =  true ]; then
+    gcloud compute ssl-certificates describe ${sslCertName} --global >/dev/null 2>&1
+    [ $? -eq 0 ] && gcloud compute ssl-certificates delete ${sslCertName} --global --quiet;
+  fi
+}
 
 
-###create instance template
-gcloud compute instance-templates create ${instanceTemplateName}  \
-  --metadata-from-file startup-script=${startUpScriptName} \
-  --machine-type=f1-micro \
-  --tags=http-server,https-server,${firewallTagX006} \
-  --create-disk=image=projects/ubuntu-os-cloud/global/images/ubuntu-1804-bionic-v20230308,mode=rw,size=10,type=pd-balanced
+function createGCPResources() {
+  echo "Start of GCP infra provisioning"
+
+  ##create static ip address
+  staticIpName=http-todo-app-static-ip
+  IP_ADDRESS=$(getOrCreateIpAddress ${staticIpName})
+  echo "For HTTP use IP_ADDRESS: ${IP_ADDRESS}"
+
+  ###create instance template
+  gcloud compute instance-templates create ${instanceTemplateName}  \
+    --metadata-from-file startup-script=${startUpScriptName} \
+    --machine-type=f1-micro \
+    --tags=http-server,https-server,${firewallTagX006} \
+    --create-disk=image=projects/ubuntu-os-cloud/global/images/ubuntu-1804-bionic-v20230308,mode=rw,size=10,type=pd-balanced
 
 
-###create instance group
-### add health check for instance group members, use either 1 below
-# TCP health check to simply verify that a TCP connection can be established, but not application layer behaviour
-gcloud compute health-checks create tcp ${healthCheckerName}  \
-  --global \
-  --port=${NODE_PORT}  \
-  --check-interval=5s \
-  --timeout=5s \
-  --unhealthy-threshold=2 \
-  --healthy-threshold=2
+  ###create instance group
+  ### add health check for instance group members, use either 1 below
+  # TCP health check to simply verify that a TCP connection can be established, but not application layer behaviour
+  gcloud compute health-checks create tcp ${healthCheckerName}  \
+    --global \
+    --port=${NODE_PORT}  \
+    --check-interval=5s \
+    --timeout=5s \
+    --unhealthy-threshold=2 \
+    --healthy-threshold=2
 
-# HTTP health-check, to app health endpoint, test specific to application layer behaviour
-#gcloud compute health-checks create http ${healthCheckerName}  \
-#  --request-path=/ \
-#  --port=${NODE_PORT}  \
-#  --check-interval=5s \
-#  --timeout=5s \
-#  --unhealthy-threshold=2 \
-#  --healthy-threshold=2 \
-#  --global
-
-
-gcloud compute instance-groups managed create ${instanceGroupName} \
-  --region=${REGION} \
-  --template=${instanceTemplateName} \
-  --size=1
-
-gcloud compute instance-groups managed set-named-ports ${instanceGroupName}  \
-  --region=${REGION} \
-  --named-ports=namedport6006:${httpPort6006},namedport80:${httpPort80}
-
-## create load balancer related
-gcloud compute backend-services create ${backendServiceName} \
-  --global \
-  --protocol=HTTP \
-  --load-balancing-scheme=EXTERNAL \
-  --health-checks=${healthCheckerName} \
-  --port-name=namedport80
-#  --port-name=namedport6006
-
-gcloud compute backend-services add-backend ${backendServiceName} \
-  --instance-group=${instanceGroupName} \
-  --instance-group-region=${REGION} \
-  --global
-
-gcloud compute url-maps create ${urlMapsName} --default-service=${backendServiceName}
-
-gcloud compute target-http-proxies create ${targetHttpProxiesName} --url-map=${urlMapsName}
-
-gcloud compute forwarding-rules create ${frontendForwardingRuleName} \
-  --target-http-proxy=${targetHttpProxiesName} \
-  --load-balancing-scheme=EXTERNAL \
-  --ports=80 \
-  --address=${staticIpName} \
-  --global
-
-# create firewall to allow ingress traffic
-gcloud compute firewall-rules create ${firewallAllowX006} \
-  --direction=INGRESS \
-  --priority=5000 \
-  --network=default \
-  --action=ALLOW \
-  --rules=tcp:6006,tcp:80,tcp:8006,tcp:9006 \
-  --target-tags=${firewallTagX006}
+  # HTTP health-check, to app health endpoint, test specific to application layer behaviour
+  #gcloud compute health-checks create http ${healthCheckerName}  \
+  #  --request-path=/ \
+  #  --port=${NODE_PORT}  \
+  #  --check-interval=5s \
+  #  --timeout=5s \
+  #  --unhealthy-threshold=2 \
+  #  --healthy-threshold=2 \
+  #  --global
 
 
-echo "(wait for 1 min) Then web server available at: http://${IP_ADDRESS}, or http://${IP_ADDRESS}/index.html. make sure http! "
+  gcloud compute instance-groups managed create ${instanceGroupName} \
+    --region=${REGION} \
+    --template=${instanceTemplateName} \
+    --size=1
+
+  gcloud compute instance-groups managed set-named-ports ${instanceGroupName}  \
+    --region=${REGION} \
+    --named-ports=namedport6006:${httpPort6006},namedport80:${httpPort80}
+
+  ## create load balancer related
+  gcloud compute backend-services create ${backendServiceName} \
+    --global \
+    --protocol=HTTP \
+    --load-balancing-scheme=EXTERNAL \
+    --health-checks=${healthCheckerName} \
+    --port-name=namedport80
+  #  --port-name=namedport6006
+
+  gcloud compute backend-services add-backend ${backendServiceName} \
+    --instance-group=${instanceGroupName} \
+    --instance-group-region=${REGION} \
+    --global
+
+  gcloud compute url-maps create ${urlMapsName} --default-service=${backendServiceName}
+
+  gcloud compute target-http-proxies create ${targetHttpProxiesName} --url-map=${urlMapsName}
+
+  gcloud compute forwarding-rules create ${frontendForwardingRuleName} \
+    --target-http-proxy=${targetHttpProxiesName} \
+    --load-balancing-scheme=EXTERNAL \
+    --ports=80 \
+    --address=${staticIpName} \
+    --global
+
+  # create firewall to allow ingress traffic
+  gcloud compute firewall-rules create ${firewallAllowX006} \
+    --direction=INGRESS \
+    --priority=5000 \
+    --network=default \
+    --action=ALLOW \
+    --rules=tcp:6006,tcp:80,tcp:8006,tcp:9006 \
+    --target-tags=${firewallTagX006}
 
 
+  echo "(wait for 1 min) Then web server available at: http://${IP_ADDRESS}, or http://${IP_ADDRESS}/index.html. make sure http! "
 
+}
 
-#######################################################################################################################
-#######################################################################################################################
 
 function doCreate4Https(){
   ######### HTTPS support ########
@@ -236,10 +258,10 @@ function doCreate4Https(){
   echo "Start to create https relevant resources, it will take a while ......"
 
   ## use your real domain name below
-#  domain='your.real.domain.com'
+  # domain='your.real.domain.com'
   domain=$1
-  sslCertName=https-todo-app-gcp-cert
-  httpsStaticIpName=https-todo-app-static-ip
+
+  echo "You provided domain name: ${domain}"
 
   HTTPS_IP_ADDRESS=$(getOrCreateIpAddress ${httpsStaticIpName})
   echo "For HTTPS use IP_ADDRESS: ${HTTPS_IP_ADDRESS}"
@@ -263,14 +285,29 @@ function doCreate4Https(){
   echo "Need to update your DNS registrar's domain mapping for 'A' record to IP address: ${HTTPS_IP_ADDRESS}"
   echo "Need to wait quite some time(maybe 1 hour) for GCP to provision this cert, in GCP console, go to 'Certificate Manager' page and 'CLASSIC CERTIFICATES' tab to check status"
   echo "After cert status turn into active, can access: https://${domain}/index.html"
-
 }
 
 
-# enable for HTTPS if toggled on, under the provided domain
-YOUR_DOMAIN_NAME='your.real.domain.com'
+## do the work
+echo "Current mode is ${MODE}, support one of [cleanup, creationHttpOnly, creationHttps]"
 
-if [ ${IS_HTTPS_TOGGLE_ON} = true ]; then
-  doCreate4Https ${YOUR_DOMAIN_NAME}
+if [ ${MODE} = cleanup ]; then
+  cleanupGCPResources
 fi
 
+if [ ${MODE} = creationHttpOnly ]; then
+  cleanupGCPResources
+  prepareStartupScript
+  createGCPResources
+fi
+
+if [ ${MODE} = creationHttps ]; then
+  cleanupGCPResources
+  prepareStartupScript
+  createGCPResources
+
+  # enable for HTTPS if toggled on, under the provided domain
+  # use your real domain below
+  YOUR_DOMAIN_NAME='your.real.domain.com'
+  doCreate4Https ${YOUR_DOMAIN_NAME}
+fi
