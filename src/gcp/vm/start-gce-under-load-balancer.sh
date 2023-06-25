@@ -13,6 +13,9 @@ NODE_PORT=6006
 httpPort6006=6006
 httpPort80=80
 
+# toggle of https support, toggle true need more settings, refer to 'doCreate4Https' function at the bottom
+IS_HTTPS_TOGGLE_ON=false
+
 staticHtmlFile=sample-todo-website.html
 nodeServerFile=sample-node-server.js
 
@@ -79,7 +82,7 @@ EOF
 ## End of startup-script.sh
 
 
-getOrCreateIpAddress(){
+function getOrCreateIpAddress(){
   #gcloud compute addresses delete ${THE_IP_ADDRESS_NAME} --global --quiet
   IP_ADDRESSName=$1
   theIp=$(gcloud compute addresses describe ${IP_ADDRESSName} --global --format='get(address)' 2>/dev/null);
@@ -220,3 +223,57 @@ gcloud compute firewall-rules create ${firewallAllowX006} \
 
 
 echo "(wait for 1 min) Then web server available at: http://${IP_ADDRESS}, or http://${IP_ADDRESS}/index.html. make sure http! "
+
+
+
+
+#######################################################################################################################
+#######################################################################################################################
+
+function doCreate4Https(){
+  ######### HTTPS support ########
+
+  ### IF want to do https, need a domain before hand, which will be signed by GCP.
+  ### Https forwarding rules: https://cloud.google.com/load-balancing/docs/ssl-certificates/google-managed-certs#gcloud
+  ### However for newly created GCP managed-cert, need time for GCP signing, my previous test about 1 hour.
+  echo "HTTPS support creating, it will take a while ......"
+
+  ## use your real domain name below
+#  domain='your.real.domain.com'
+  domain=$1
+  sslCertName=https-todo-app-gcp-cert
+  httpsStaticIpName=https-todo-app-static-ip
+
+  HTTPS_IP_ADDRESS=$(getOrCreateIpAddress ${httpsStaticIpName})
+  echo "For HTTPS use IP_ADDRESS: ${HTTPS_IP_ADDRESS}"
+
+  gcloud compute ssl-certificates describe ${sslCertName} --global >/dev/null 2>&1
+  [ $? -eq 1 ] && gcloud compute ssl-certificates create ${sslCertName} --domains=${domain} --global
+
+  gcloud compute target-https-proxies create ${httpsTargetHttpsProxiesName} \
+      --url-map=${urlMapsName} \
+      --ssl-certificates=${sslCertName} \
+      --global-ssl-certificates \
+      --global
+
+  gcloud compute forwarding-rules create ${httpsFrontendForwardingRuleName} \
+    --target-https-proxy=${httpsTargetHttpsProxiesName} \
+    --load-balancing-scheme=EXTERNAL \
+    --ports=443 \
+    --address=${HTTPS_IP_ADDRESS} \
+    --global
+
+  echo "Need to update your DNS registrar's domain mapping for 'A' record to IP address: ${HTTPS_IP_ADDRESS}"
+  echo "Need to wait quite some time(maybe 1 hour) for GCP to provision this cert, in GCP console, go to 'Certificate Manager' page and 'CLASSIC CERTIFICATES' tab to check status"
+  echo "After cert status turn into active, can access: https://${domain}/index.html"
+
+}
+
+
+# enable for HTTPS if toggled on, under the provided domain
+YOUR_DOMAIN_NAME='your.real.domain.com'
+
+if [ ${IS_HTTPS_TOGGLE_ON} = true ]; then
+  doCreate4Https ${YOUR_DOMAIN_NAME}
+fi
+
